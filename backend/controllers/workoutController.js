@@ -582,6 +582,39 @@ class WorkoutController {
   }
 
   /**
+   * 获取综合训练分析数据
+   * @async
+   * @param {Object} req - Express请求对象
+   * @param {Object} res - Express响应对象
+   * @returns {Promise<void>}
+   */
+  async getWorkoutOverview(req, res) {
+    try {
+      const { days = 30, username } = req.query;
+
+      if (!username) {
+        return res.status(400).json({
+          success: false,
+          message: '用户名不能为空'
+        });
+      }
+
+      const data = await workoutService.getWorkoutOverview(username, parseInt(days));
+
+      res.status(200).json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      logger.error('获取综合分析失败', { error: error.message });
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  /**
    * 获取动作历史详情与数据分析
    * @async
    * @param {Object} req - Express请求对象

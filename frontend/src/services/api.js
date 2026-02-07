@@ -219,6 +219,14 @@ export const workoutAPI = {
     return api.get('/workouts/stats', { params: { days } }).then(res => res.data);
   },
   /**
+   * 获取综合训练分析数据
+   * @param {number} days - 天数范围
+   * @returns {Promise<Object>} 综合分析结果
+   */
+  getWorkoutOverview: (days = 30) => {
+    return api.get('/workouts/overview', { params: { days } }).then(res => res.data);
+  },
+  /**
    * 获取动作历史详情与数据分析
    * @param {string} exerciseId - 动作ID
    * @param {number} days - 查询天数范围
