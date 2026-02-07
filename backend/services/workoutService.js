@@ -252,6 +252,24 @@ class WorkoutService {
   }
 
   /**
+   * 删除训练记录中的某组
+   * @async
+   * @param {string} workoutId - 训练记录ID
+   * @param {Number} exerciseIndex - 动作索引
+   * @param {Number} setIndex - 组数索引
+   * @returns {Promise<Object>} 返回更新后的训练记录
+   */
+  async removeSetFromWorkout(workoutId, exerciseIndex, setIndex) {
+    try {
+      const workout = await this.getWorkoutById(workoutId);
+      await workout.removeSet(exerciseIndex, setIndex);
+      return await this.getWorkoutById(workoutId);
+    } catch (error) {
+      throw new Error(`删除组数失败: ${error.message}`);
+    }
+  }
+
+  /**
    * 完成训练
    * @async
    * @param {string} workoutId - 训练记录ID
@@ -321,6 +339,140 @@ class WorkoutService {
       return stats;
     } catch (error) {
       throw new Error(`获取统计数据失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 获取某个动作的历史记录与数据分析
+   * @async
+   * @param {string} username - 用户名
+   * @param {string} exerciseId - 动作ID
+   * @param {Number} days - 天数范围
+   * @returns {Promise<Object>} 历史记录与分析
+   */
+  async getExerciseHistory(username, exerciseId, days = 180) {
+    try {
+      const exercise = await Exercise.findById(exerciseId);
+      if (!exercise) {
+        throw new Error('动作不存在');
+      }
+
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+
+      const workouts = await Workout.find({
+        username,
+        date: { $gte: startDate },
+        'exercises.exercise': exerciseId
+      })
+        .populate('exercises.exercise', 'name bodyPart difficulty')
+        .sort({ date: -1 });
+
+      const history = [];
+      let totalSets = 0;
+      let totalReps = 0;
+      let totalVolume = 0;
+      let bestWeight = 0;
+      let bestReps = 0;
+      let bestSetVolume = 0;
+
+      workouts.forEach(workout => {
+        const logs = workout.exercises.filter(log =>
+          log.exercise && log.exercise._id.toString() === exerciseId.toString()
+        );
+
+        logs.forEach(log => {
+          let workoutSets = 0;
+          let workoutReps = 0;
+          let workoutVolume = 0;
+          let workoutBestWeight = 0;
+          let workoutBestReps = 0;
+          let workoutBestSetVolume = 0;
+
+          const sets = log.sets.map(set => {
+            const setVolume = set.weight * set.reps;
+            workoutSets += 1;
+            workoutReps += set.reps;
+            workoutVolume += setVolume;
+            workoutBestWeight = Math.max(workoutBestWeight, set.weight);
+            workoutBestReps = Math.max(workoutBestReps, set.reps);
+            workoutBestSetVolume = Math.max(workoutBestSetVolume, setVolume);
+
+            bestWeight = Math.max(bestWeight, set.weight);
+            bestReps = Math.max(bestReps, set.reps);
+            bestSetVolume = Math.max(bestSetVolume, setVolume);
+
+            return {
+              setNumber: set.setNumber,
+              weight: set.weight,
+              reps: set.reps,
+              completed: set.completed,
+              completedAt: set.completedAt
+            };
+          });
+
+          totalSets += workoutSets;
+          totalReps += workoutReps;
+          totalVolume += workoutVolume;
+
+          history.push({
+            workoutId: workout._id,
+            date: workout.date,
+            status: workout.status,
+            sets,
+            totals: {
+              sets: workoutSets,
+              reps: workoutReps,
+              volume: workoutVolume
+            },
+            bests: {
+              weight: workoutBestWeight,
+              reps: workoutBestReps,
+              setVolume: workoutBestSetVolume
+            }
+          });
+        });
+      });
+
+      const totalWorkouts = history.length;
+      const avgVolumePerWorkout = totalWorkouts > 0 ? Math.round(totalVolume / totalWorkouts) : 0;
+      const avgRepsPerSet = totalSets > 0 ? Math.round((totalReps / totalSets) * 10) / 10 : 0;
+
+      const sortedHistory = history.sort((a, b) => new Date(b.date) - new Date(a.date));
+      const recent = sortedHistory.slice(0, 3);
+      const previous = sortedHistory.slice(3, 6);
+
+      const recentAvg = recent.length
+        ? recent.reduce((sum, item) => sum + item.totals.volume, 0) / recent.length
+        : 0;
+      const previousAvg = previous.length
+        ? previous.reduce((sum, item) => sum + item.totals.volume, 0) / previous.length
+        : 0;
+      const volumeChangeRate = previousAvg > 0 ? Math.round(((recentAvg - previousAvg) / previousAvg) * 100) : 0;
+
+      return {
+        exercise: {
+          id: exercise._id,
+          name: exercise.name,
+          bodyPart: exercise.bodyPart,
+          difficulty: exercise.difficulty
+        },
+        summary: {
+          totalWorkouts,
+          totalSets,
+          totalReps,
+          totalVolume,
+          bestWeight,
+          bestReps,
+          bestSetVolume,
+          avgVolumePerWorkout,
+          avgRepsPerSet,
+          volumeChangeRate
+        },
+        history: sortedHistory
+      };
+    } catch (error) {
+      throw new Error(`获取动作历史失败: ${error.message}`);
     }
   }
 

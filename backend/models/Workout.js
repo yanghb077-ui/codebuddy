@@ -305,6 +305,25 @@ workoutSchema.methods.completeSet = function(exerciseIndex, setIndex) {
   return this.save();
 };
 
+// 实例方法：删除某组
+workoutSchema.methods.removeSet = function(exerciseIndex, setIndex) {
+  if (exerciseIndex < 0 || exerciseIndex >= this.exercises.length) {
+    throw new Error('动作索引超出范围');
+  }
+
+  const exercise = this.exercises[exerciseIndex];
+  if (setIndex < 0 || setIndex >= exercise.sets.length) {
+    throw new Error('组数索引超出范围');
+  }
+
+  exercise.sets.splice(setIndex, 1);
+  exercise.sets.forEach((set, index) => {
+    set.setNumber = index + 1;
+  });
+
+  return this.save();
+};
+
 // 静态方法：获取最近N天的训练记录
 workoutSchema.statics.getRecentWorkouts = function(username, days = 30) {
   const startDate = new Date();

@@ -1,8 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
 import styled from 'styled-components';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Tooltip,
+  Legend
+} from 'chart.js';
+import { Line, Bar } from 'react-chartjs-2';
 import { workoutAPI, exerciseAPI } from './services/api';
 import UserLogin from './components/UserLogin';
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend);
 
 // 样式组件
 const Container = styled.div`
@@ -293,8 +306,7 @@ function Workout({ username }) {
   const [workout, setWorkout] = useState(null);
   const [exercises, setExercises] = useState([]);
   const [selectedExercise, setSelectedExercise] = useState('');
-  const [weight, setWeight] = useState('');
-  const [reps, setReps] = useState('');
+  const [draftSets, setDraftSets] = useState({});
   const [timer, setTimer] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
 
@@ -316,6 +328,7 @@ function Workout({ username }) {
       const response = await workoutAPI.getWorkoutById(id);
       if (response.success) {
         setWorkout(response.data);
+        setDraftSets({});
       }
     } catch (error) {
       console.error('加载训练失败:', error);
@@ -359,18 +372,65 @@ function Workout({ username }) {
     }
   };
 
-  const addSet = async (exerciseIndex) => {
-    if (!weight || !reps) {
+  const addDraftSet = (exerciseIndex) => {
+    setDraftSets(prev => {
+      const current = prev[exerciseIndex] || [];
+      return {
+        ...prev,
+        [exerciseIndex]: [...current, { weight: '', reps: '' }]
+      };
+    });
+  };
+
+  const updateDraftSet = (exerciseIndex, draftIndex, field, value) => {
+    setDraftSets(prev => {
+      const current = prev[exerciseIndex] || [];
+      const updated = current.map((item, index) =>
+        index === draftIndex ? { ...item, [field]: value } : item
+      );
+      return { ...prev, [exerciseIndex]: updated };
+    });
+  };
+
+  const removeDraftSet = (exerciseIndex, draftIndex) => {
+    setDraftSets(prev => {
+      const current = prev[exerciseIndex] || [];
+      const updated = current.filter((_, index) => index !== draftIndex);
+      return { ...prev, [exerciseIndex]: updated };
+    });
+  };
+
+  const saveDraftSet = async (exerciseIndex, draftIndex) => {
+    const current = draftSets[exerciseIndex] || [];
+    const draft = current[draftIndex];
+    if (!draft || !draft.weight || !draft.reps) {
       alert('请填写重量和次数');
       return;
     }
 
     try {
-      const response = await workoutAPI.addSetToWorkout(id, exerciseIndex, parseFloat(weight), parseInt(reps));
+      const response = await workoutAPI.addSetToWorkout(
+        id,
+        exerciseIndex,
+        parseFloat(draft.weight),
+        parseInt(draft.reps)
+      );
       if (response.success) {
         setWorkout(response.data);
-        setWeight('');
-        setReps('');
+        const newSetIndex = response.data.exercises?.[exerciseIndex]?.sets?.length
+          ? response.data.exercises[exerciseIndex].sets.length - 1
+          : null;
+        if (newSetIndex !== null) {
+          const completeResponse = await workoutAPI.completeSetInWorkout(
+            id,
+            exerciseIndex,
+            newSetIndex
+          );
+          if (completeResponse.success) {
+            setWorkout(completeResponse.data);
+          }
+        }
+        removeDraftSet(exerciseIndex, draftIndex);
       }
     } catch (error) {
       console.error('添加组数失败:', error);
@@ -385,6 +445,17 @@ function Workout({ username }) {
       }
     } catch (error) {
       console.error('完成组数失败:', error);
+    }
+  };
+
+  const deleteSet = async (exerciseIndex, setIndex) => {
+    try {
+      const response = await workoutAPI.deleteSetFromWorkout(id, exerciseIndex, setIndex);
+      if (response.success) {
+        setWorkout(response.data);
+      }
+    } catch (error) {
+      console.error('删除组数失败:', error);
     }
   };
 
@@ -497,50 +568,91 @@ function Workout({ username }) {
               </h4>
               
               <div style={{ marginBottom: '10px' }}>
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                  <input
-                    type="number"
-                    placeholder="重量 (kg)"
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
-                    style={{ 
-                      flex: 1, 
-                      padding: '8px', 
-                      border: '1px solid #d9d9d9', 
-                      borderRadius: '4px'
-                    }}
-                  />
-                  <input
-                    type="number"
-                    placeholder="次数"
-                    value={reps}
-                    onChange={(e) => setReps(e.target.value)}
-                    style={{ 
-                      flex: 1, 
-                      padding: '8px', 
-                      border: '1px solid #d9d9d9', 
-                      borderRadius: '4px'
-                    }}
-                  />
-                  <button
-                    onClick={() => addSet(exerciseIndex)}
-                    style={{ 
-                      padding: '8px 16px', 
-                      background: '#52c41a', 
-                      color: 'white', 
-                      border: 'none', 
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    添加组数
-                  </button>
-                </div>
+                <button
+                  onClick={() => addDraftSet(exerciseIndex)}
+                  style={{ 
+                    padding: '8px 16px', 
+                    background: '#52c41a', 
+                    color: 'white', 
+                    border: 'none', 
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  添加组数
+                </button>
               </div>
 
-              {exerciseLog.sets.length > 0 && (
+              {((draftSets[exerciseIndex] || []).length > 0 || exerciseLog.sets.length > 0) && (
                 <div>
                   <h5 style={{ marginBottom: '8px', fontSize: '14px' }}>组数记录：</h5>
+                  {(draftSets[exerciseIndex] || []).map((draft, draftIndex) => (
+                    <div
+                      key={`draft-${draftIndex}`}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr auto auto',
+                        gap: '8px',
+                        alignItems: 'center',
+                        padding: '8px',
+                        background: '#fffbe6',
+                        border: '1px solid #ffe58f',
+                        borderRadius: '4px',
+                        marginBottom: '5px'
+                      }}
+                    >
+                      <input
+                        type="number"
+                        placeholder="重量 (kg)"
+                        value={draft.weight}
+                        onChange={(e) => updateDraftSet(exerciseIndex, draftIndex, 'weight', e.target.value)}
+                        style={{
+                          padding: '8px',
+                          border: '1px solid #d9d9d9',
+                          borderRadius: '4px'
+                        }}
+                      />
+                      <input
+                        type="number"
+                        placeholder="次数"
+                        value={draft.reps}
+                        onChange={(e) => updateDraftSet(exerciseIndex, draftIndex, 'reps', e.target.value)}
+                        style={{
+                          padding: '8px',
+                          border: '1px solid #d9d9d9',
+                          borderRadius: '4px'
+                        }}
+                      />
+                      <button
+                        onClick={() => saveDraftSet(exerciseIndex, draftIndex)}
+                        style={{
+                          padding: '6px 12px',
+                          background: '#1890ff',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        完成
+                      </button>
+                      <button
+                        onClick={() => removeDraftSet(exerciseIndex, draftIndex)}
+                        style={{
+                          padding: '6px 12px',
+                          background: '#f5f5f5',
+                          color: '#333',
+                          border: '1px solid #d9d9d9',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        删除
+                      </button>
+                    </div>
+                  ))}
                   {exerciseLog.sets.map((set, setIndex) => (
                     <div 
                       key={setIndex}
@@ -559,22 +671,38 @@ function Workout({ username }) {
                         第{set.setNumber}组: {set.weight}kg × {set.reps}次
                         {set.completed && <span style={{ color: '#52c41a', marginLeft: '8px' }}>✓ 已完成</span>}
                       </span>
-                      {!set.completed && (
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {!set.completed && (
+                          <button
+                            onClick={() => completeSet(exerciseIndex, setIndex)}
+                            style={{ 
+                              padding: '4px 12px', 
+                              background: '#1890ff', 
+                              color: 'white', 
+                              border: 'none', 
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                          >
+                            完成
+                          </button>
+                        )}
                         <button
-                          onClick={() => completeSet(exerciseIndex, setIndex)}
+                          onClick={() => deleteSet(exerciseIndex, setIndex)}
                           style={{ 
                             padding: '4px 12px', 
-                            background: '#1890ff', 
-                            color: 'white', 
-                            border: 'none', 
+                            background: '#f5f5f5', 
+                            color: '#333', 
+                            border: '1px solid #d9d9d9', 
                             borderRadius: '4px',
                             cursor: 'pointer',
                             fontSize: '12px'
                           }}
                         >
-                          完成
+                          删除
                         </button>
-                      )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -878,6 +1006,315 @@ function Calendar({ username }) {
   );
 }
 
+// 动作历史与数据分析页面
+function ExerciseHistory({ username }) {
+  const [exercises, setExercises] = useState([]);
+  const [selectedExerciseId, setSelectedExerciseId] = useState('');
+  const [days, setDays] = useState(180);
+  const [historyData, setHistoryData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    loadExercises();
+  }, [username]);
+
+  useEffect(() => {
+    if (selectedExerciseId) {
+      loadHistory();
+    } else {
+      setHistoryData(null);
+    }
+  }, [selectedExerciseId, days]);
+
+  const loadExercises = async () => {
+    try {
+      const response = await exerciseAPI.getAllExercises();
+      if (response.success) {
+        setExercises(response.data);
+      }
+    } catch (err) {
+      console.error('加载动作库失败:', err);
+    }
+  };
+
+  const loadHistory = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await workoutAPI.getExerciseHistory(selectedExerciseId, days);
+      if (response.success) {
+        setHistoryData(response.data);
+      } else {
+        setError(response.message || '加载失败');
+      }
+    } catch (err) {
+      console.error('加载动作历史失败:', err);
+      setError(err.response?.data?.message || err.message || '加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('zh-CN');
+  };
+
+  const summaryCards = historyData ? [
+    { label: '训练次数', value: historyData.summary.totalWorkouts },
+    { label: '总组数', value: historyData.summary.totalSets },
+    { label: '总次数', value: historyData.summary.totalReps },
+    { label: '总训练量', value: `${historyData.summary.totalVolume} kg·次` },
+    { label: '最高重量', value: `${historyData.summary.bestWeight} kg` },
+    { label: '最佳单组量', value: `${historyData.summary.bestSetVolume} kg·次` },
+    { label: '平均每次训练量', value: `${historyData.summary.avgVolumePerWorkout} kg·次` },
+    { label: '平均每组次数', value: historyData.summary.avgRepsPerSet },
+    { label: '近3次变化', value: `${historyData.summary.volumeChangeRate}%` }
+  ] : [];
+
+  const chartLabels = historyData
+    ? historyData.history.slice().reverse().map(item => formatDate(item.date))
+    : [];
+  const volumeSeries = historyData
+    ? historyData.history.slice().reverse().map(item => item.totals.volume)
+    : [];
+  const bestWeightSeries = historyData
+    ? historyData.history.slice().reverse().map(item => item.bests.weight)
+    : [];
+  const setsSeries = historyData
+    ? historyData.history.slice().reverse().map(item => item.totals.sets)
+    : [];
+  const repsSeries = historyData
+    ? historyData.history.slice().reverse().map(item => item.totals.reps)
+    : [];
+
+  const volumeChartData = {
+    labels: chartLabels,
+    datasets: [
+      {
+        label: '训练量(kg·次)',
+        data: volumeSeries,
+        borderColor: '#1890ff',
+        backgroundColor: 'rgba(24,144,255,0.2)',
+        tension: 0.3
+      }
+    ]
+  };
+
+  const bestWeightChartData = {
+    labels: chartLabels,
+    datasets: [
+      {
+        label: '最高重量(kg)',
+        data: bestWeightSeries,
+        borderColor: '#52c41a',
+        backgroundColor: 'rgba(82,196,26,0.2)',
+        tension: 0.3
+      }
+    ]
+  };
+
+  const setsRepsChartData = {
+    labels: chartLabels,
+    datasets: [
+      {
+        label: '组数',
+        data: setsSeries,
+        backgroundColor: 'rgba(250,173,20,0.7)'
+      },
+      {
+        label: '次数',
+        data: repsSeries,
+        backgroundColor: 'rgba(114,46,209,0.7)'
+      }
+    ]
+  };
+
+  return (
+    <div style={{
+      background: 'white',
+      borderRadius: '12px',
+      padding: '20px',
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+    }}>
+      <h2 style={{ marginBottom: '20px' }}>动作历史详情与数据分析</h2>
+
+      <div style={{
+        display: 'flex',
+        gap: '10px',
+        flexWrap: 'wrap',
+        marginBottom: '20px'
+      }}>
+        <select
+          value={selectedExerciseId}
+          onChange={(e) => setSelectedExerciseId(e.target.value)}
+          style={{
+            flex: '1 1 260px',
+            padding: '10px',
+            border: '1px solid #d9d9d9',
+            borderRadius: '4px'
+          }}
+        >
+          <option value="">选择动作...</option>
+          {exercises.map(exercise => (
+            <option key={exercise._id} value={exercise._id}>
+              {exercise.name} ({exercise.bodyPart} - {exercise.difficulty})
+            </option>
+          ))}
+        </select>
+
+        {[30, 90, 180, 365].map(range => (
+          <button
+            key={range}
+            onClick={() => setDays(range)}
+            style={{
+              padding: '10px 16px',
+              borderRadius: '4px',
+              border: '1px solid #d9d9d9',
+              background: days === range ? '#1890ff' : '#fff',
+              color: days === range ? '#fff' : '#333',
+              cursor: 'pointer'
+            }}
+          >
+            最近{range}天
+          </button>
+        ))}
+      </div>
+
+      {loading && <p style={{ color: '#666' }}>加载中...</p>}
+      {error && <p style={{ color: '#ff4d4f' }}>{error}</p>}
+
+      {!loading && selectedExerciseId && historyData && (
+        <div>
+          <div style={{
+            marginBottom: '20px',
+            padding: '12px 16px',
+            background: '#f0f2f5',
+            borderRadius: '8px'
+          }}>
+            <strong>{historyData.exercise.name}</strong>
+            <span style={{ marginLeft: '8px', color: '#666' }}>
+              ({historyData.exercise.bodyPart} - {historyData.exercise.difficulty})
+            </span>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+            gap: '12px',
+            marginBottom: '20px'
+          }}>
+            {summaryCards.map((card, index) => (
+              <div
+                key={index}
+                style={{
+                  padding: '12px',
+                  border: '1px solid #f0f0f0',
+                  borderRadius: '8px',
+                  background: '#fff'
+                }}
+              >
+                <div style={{ fontSize: '12px', color: '#999', marginBottom: '6px' }}>{card.label}</div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{card.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {historyData.history.length > 0 && (
+            <div style={{ marginBottom: '24px' }}>
+              <h3 style={{ marginBottom: '12px' }}>趋势图表</h3>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: '16px'
+              }}>
+                <div style={{ padding: '12px', border: '1px solid #f0f0f0', borderRadius: '8px' }}>
+                  <Line data={volumeChartData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
+                </div>
+                <div style={{ padding: '12px', border: '1px solid #f0f0f0', borderRadius: '8px' }}>
+                  <Line data={bestWeightChartData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
+                </div>
+                <div style={{ padding: '12px', border: '1px solid #f0f0f0', borderRadius: '8px' }}>
+                  <Bar data={setsRepsChartData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {historyData.history.length === 0 ? (
+            <p style={{ color: '#666' }}>暂无历史记录</p>
+          ) : (
+            <div>
+              <h3 style={{ marginBottom: '12px' }}>训练历史</h3>
+              {historyData.history.map((item, index) => (
+                <div
+                  key={`${item.workoutId}-${index}`}
+                  style={{
+                    border: '1px solid #e6e6e6',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    marginBottom: '12px'
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: '8px'
+                  }}>
+                    <strong>{formatDate(item.date)}</strong>
+                    <span style={{ color: '#666' }}>总量 {item.totals.volume} kg·次</span>
+                  </div>
+
+                  <div style={{
+                    display: 'flex',
+                    gap: '12px',
+                    flexWrap: 'wrap',
+                    color: '#666',
+                    fontSize: '12px',
+                    marginBottom: '8px'
+                  }}>
+                    <span>组数: {item.totals.sets}</span>
+                    <span>次数: {item.totals.reps}</span>
+                    <span>最高重量: {item.bests.weight}kg</span>
+                    <span>最佳单组量: {item.bests.setVolume}kg·次</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {item.sets.map((set, setIndex) => (
+                      <div
+                        key={setIndex}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          padding: '6px 8px',
+                          borderRadius: '4px',
+                          border: '1px solid #f0f0f0',
+                          background: set.completed ? '#f6ffed' : '#fff'
+                        }}
+                      >
+                        <span>第{set.setNumber}组</span>
+                        <span>{set.weight}kg × {set.reps}次</span>
+                        <span style={{ color: set.completed ? '#52c41a' : '#999' }}>
+                          {set.completed ? '已完成' : '未完成'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!selectedExerciseId && !loading && (
+        <p style={{ color: '#666' }}>请选择动作以查看历史详情与数据分析</p>
+      )}
+    </div>
+  );
+}
+
 // 主App组件
 function App() {
   const [username, setUsername] = useState(() => localStorage.getItem('fitness_username'));
@@ -903,6 +1340,7 @@ function App() {
         <Nav>
           <NavLink to="/">首页</NavLink>
           <NavLink to="/calendar">训练日历</NavLink>
+          <NavLink to="/exercise-history">动作分析</NavLink>
           <UserInfo>
             <span>👤 {username}</span>
             <LogoutButton onClick={handleLogout}>切换用户</LogoutButton>
@@ -916,6 +1354,7 @@ function App() {
           <Route path="/workout/:id" element={<Workout username={username} />} />
           <Route path="/calendar" element={<Calendar username={username} />} />
           <Route path="/calendar/:date" element={<Calendar username={username} />} />
+          <Route path="/exercise-history" element={<ExerciseHistory username={username} />} />
         </Routes>
       </Content>
     </Container>

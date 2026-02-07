@@ -448,6 +448,63 @@ class WorkoutController {
   }
 
   /**
+   * 删除训练记录中的某组
+   * @async
+   * @param {Object} req - Express请求对象
+   * @param {Object} res - Express响应对象
+   * @returns {Promise<void>}
+   */
+  async deleteSetFromWorkout(req, res) {
+    try {
+      const { id } = req.params;
+      const exerciseIndex = req.query.exerciseIndex ?? req.body.exerciseIndex;
+      const setIndex = req.query.setIndex ?? req.body.setIndex;
+      const username = req.query.username ?? req.body.username;
+
+      if (!username) {
+        return res.status(400).json({
+          success: false,
+          message: '用户名不能为空'
+        });
+      }
+
+      if (exerciseIndex === undefined || setIndex === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: '参数不完整：需要exerciseIndex和setIndex'
+        });
+      }
+
+      // 验证用户只能修改自己的训练记录
+      const workout = await workoutService.getWorkoutById(id);
+      if (workout.username !== username) {
+        return res.status(403).json({
+          success: false,
+          message: '无权修改该训练记录'
+        });
+      }
+
+      const updatedWorkout = await workoutService.removeSetFromWorkout(
+        id,
+        parseInt(exerciseIndex),
+        parseInt(setIndex)
+      );
+
+      res.status(200).json({
+        success: true,
+        message: '组数删除成功',
+        data: updatedWorkout
+      });
+    } catch (error) {
+      logger.error('删除组数失败', { id: req.params.id, error: error.message });
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  /**
    * 完成训练
    * @async
    * @param {Object} req - Express请求对象
@@ -518,6 +575,47 @@ class WorkoutController {
     } catch (error) {
       logger.error('获取统计数据失败', { error: error.message });
       res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * 获取动作历史详情与数据分析
+   * @async
+   * @param {Object} req - Express请求对象
+   * @param {Object} res - Express响应对象
+   * @returns {Promise<void>}
+   */
+  async getExerciseHistory(req, res) {
+    try {
+      const { exerciseId } = req.params;
+      const { days = 180, username } = req.query;
+
+      if (!username) {
+        return res.status(400).json({
+          success: false,
+          message: '用户名不能为空'
+        });
+      }
+
+      if (!exerciseId) {
+        return res.status(400).json({
+          success: false,
+          message: '动作ID不能为空'
+        });
+      }
+
+      const data = await workoutService.getExerciseHistory(username, exerciseId, parseInt(days));
+
+      res.status(200).json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      logger.error('获取动作历史失败', { error: error.message });
+      res.status(400).json({
         success: false,
         message: error.message
       });

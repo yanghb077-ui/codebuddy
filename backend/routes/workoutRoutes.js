@@ -49,6 +49,15 @@ router.get('/recent-7-days-brief', workoutController.getRecent7DaysBrief);
 router.get('/stats', workoutController.getWorkoutStats);
 
 /**
+ * @route   GET /api/workouts/exercise-history/:exerciseId
+ * @desc    获取动作历史详情与数据分析
+ * @access  Public
+ * @param   {string} exerciseId - 动作ID
+ * @query   {Number} days - 查询天数范围
+ */
+router.get('/exercise-history/:exerciseId', workoutController.getExerciseHistory);
+
+/**
  * @route   GET /api/workouts/:id
  * @desc    获取单个训练记录
  * @access  Public
@@ -109,6 +118,16 @@ router.post('/:id/sets', workoutController.addSetToWorkout);
  * @body    {Number} setIndex - 组数索引
  */
 router.post('/:id/complete-set', workoutController.completeSetInWorkout);
+
+/**
+ * @route   DELETE /api/workouts/:id/sets
+ * @desc    删除训练记录中的某组
+ * @access  Public
+ * @param   {string} id - 训练记录ID
+ * @query   {Number} exerciseIndex - 动作索引
+ * @query   {Number} setIndex - 组数索引
+ */
+router.delete('/:id/sets', workoutController.deleteSetFromWorkout);
 
 /**
  * @route   POST /api/workouts/:id/complete

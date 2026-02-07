@@ -191,6 +191,17 @@ export const workoutAPI = {
   },
 
   /**
+   * 删除训练记录中的某组
+   * @param {string} id - 训练记录ID
+   * @param {number} exerciseIndex - 动作索引
+   * @param {number} setIndex - 组数索引
+   * @returns {Promise<Object>} 更新后的训练记录
+   */
+  deleteSetFromWorkout: (id, exerciseIndex, setIndex) => {
+    return api.delete(`/workouts/${id}/sets`, { params: { exerciseIndex, setIndex } }).then(res => res.data);
+  },
+
+  /**
    * 完成训练
    * @param {string} id - 训练记录ID
    * @returns {Promise<Object>} 完成后的训练记录
@@ -206,6 +217,15 @@ export const workoutAPI = {
    */
   getWorkoutStats: (days = 30) => {
     return api.get('/workouts/stats', { params: { days } }).then(res => res.data);
+  },
+  /**
+   * 获取动作历史详情与数据分析
+   * @param {string} exerciseId - 动作ID
+   * @param {number} days - 查询天数范围
+   * @returns {Promise<Object>} 历史详情与分析
+   */
+  getExerciseHistory: (exerciseId, days = 180) => {
+    return api.get(`/workouts/exercise-history/${exerciseId}`, { params: { days } }).then(res => res.data);
   }
 };
 
