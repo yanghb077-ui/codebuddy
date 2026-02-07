@@ -343,6 +343,118 @@ class WorkoutService {
   }
 
   /**
+   * 获取综合训练分析数据
+   * @async
+   * @param {string} username - 用户名
+   * @param {Number} days - 天数范围
+   * @returns {Promise<Object>} 综合分析结果
+   */
+  async getWorkoutOverview(username, days = 30) {
+    try {
+      const workouts = await this.getRecentWorkouts(username, days);
+      const startDate = new Date();
+      startDate.setHours(0, 0, 0, 0);
+      startDate.setDate(startDate.getDate() - (days - 1));
+
+      const dateKeys = [];
+      for (let i = 0; i < days; i++) {
+        const day = new Date(startDate);
+        day.setDate(startDate.getDate() + i);
+        dateKeys.push(day.toISOString().split('T')[0]);
+      }
+
+      const statsByDate = {};
+      dateKeys.forEach(key => {
+        statsByDate[key] = {
+          workouts: 0,
+          intensityTotal: 0,
+          intensityCount: 0
+        };
+      });
+
+      const bodyPartCounts = {};
+      const intensityBuckets = { low: 0, medium: 0, high: 0 };
+      const uniqueTrainingDays = new Set();
+      let totalDuration = 0;
+      let totalIntensity = 0;
+      let intensitySamples = 0;
+
+      workouts.forEach(workout => {
+        const dateKey = workout.date.toISOString().split('T')[0];
+        uniqueTrainingDays.add(dateKey);
+
+        if (statsByDate[dateKey]) {
+          statsByDate[dateKey].workouts += 1;
+          if (workout.intensity !== undefined && workout.intensity !== null) {
+            statsByDate[dateKey].intensityTotal += workout.intensity;
+            statsByDate[dateKey].intensityCount += 1;
+          }
+        }
+
+        if (workout.duration) {
+          totalDuration += workout.duration;
+        }
+
+        if (workout.intensity !== undefined && workout.intensity !== null) {
+          totalIntensity += workout.intensity;
+          intensitySamples += 1;
+          if (workout.intensity >= 7) {
+            intensityBuckets.high += 1;
+          } else if (workout.intensity >= 4) {
+            intensityBuckets.medium += 1;
+          } else {
+            intensityBuckets.low += 1;
+          }
+        }
+
+        workout.exercises.forEach(exerciseLog => {
+          const bodyPart = exerciseLog.exercise?.bodyPart || '未知';
+          const setsCount = exerciseLog.sets.length || 0;
+          bodyPartCounts[bodyPart] = (bodyPartCounts[bodyPart] || 0) + setsCount;
+        });
+      });
+
+      const dailySeries = dateKeys.map(key => {
+        const dayData = statsByDate[key];
+        const avgIntensity = dayData.intensityCount > 0
+          ? Math.round((dayData.intensityTotal / dayData.intensityCount) * 10) / 10
+          : 0;
+        return {
+          date: key,
+          workouts: dayData.workouts,
+          avgIntensity
+        };
+      });
+
+      const totalWorkouts = workouts.length;
+      const trainingDays = uniqueTrainingDays.size;
+      const avgIntensity = intensitySamples > 0
+        ? Math.round((totalIntensity / intensitySamples) * 10) / 10
+        : 0;
+      const avgDuration = totalWorkouts > 0
+        ? Math.round(totalDuration / totalWorkouts)
+        : 0;
+      const frequencyPerWeek = Math.round((totalWorkouts / days) * 7 * 10) / 10;
+
+      return {
+        summary: {
+          totalWorkouts,
+          trainingDays,
+          frequencyPerWeek,
+          avgIntensity,
+          totalDuration,
+          avgDuration
+        },
+        bodyPartCounts,
+        intensityBuckets,
+        dailySeries
+      };
+    } catch (error) {
+      throw new Error(`获取综合分析失败: ${error.message}`);
+    }
+  }
+
+  /**
    * 获取某个动作的历史记录与数据分析
    * @async
    * @param {string} username - 用户名

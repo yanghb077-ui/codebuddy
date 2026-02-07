@@ -91,6 +91,194 @@ const Content = styled.main`
   margin: 0 auto;
 `;
 
+// 综合训练分析页面
+function WorkoutOverview({ username }) {
+  const [days, setDays] = useState(30);
+  const [overview, setOverview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    loadOverview();
+  }, [days, username]);
+
+  const loadOverview = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await workoutAPI.getWorkoutOverview(days);
+      if (response.success) {
+        setOverview(response.data);
+      } else {
+        setError(response.message || '加载失败');
+      }
+    } catch (err) {
+      console.error('加载综合分析失败:', err);
+      setError(err.response?.data?.message || err.message || '加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const overviewCards = overview ? [
+    { label: '训练次数', value: overview.summary.totalWorkouts },
+    { label: '训练天数', value: overview.summary.trainingDays },
+    { label: '每周频率', value: `${overview.summary.frequencyPerWeek} 次/周` },
+    { label: '平均强度', value: overview.summary.avgIntensity },
+    { label: '总训练时长', value: `${overview.summary.totalDuration} 分钟` },
+    { label: '平均时长', value: `${overview.summary.avgDuration} 分钟` }
+  ] : [];
+
+  const dailyLabels = overview ? overview.dailySeries.map(item => item.date) : [];
+  const dailyWorkouts = overview ? overview.dailySeries.map(item => item.workouts) : [];
+  const dailyIntensity = overview ? overview.dailySeries.map(item => item.avgIntensity) : [];
+
+  const dailyChartData = {
+    labels: dailyLabels,
+    datasets: [
+      {
+        label: '训练次数',
+        data: dailyWorkouts,
+        borderColor: '#1890ff',
+        backgroundColor: 'rgba(24,144,255,0.2)',
+        tension: 0.3,
+        yAxisID: 'y'
+      },
+      {
+        label: '平均强度',
+        data: dailyIntensity,
+        borderColor: '#faad14',
+        backgroundColor: 'rgba(250,173,20,0.2)',
+        tension: 0.3,
+        yAxisID: 'y1'
+      }
+    ]
+  };
+
+  const bodyPartLabels = overview ? Object.keys(overview.bodyPartCounts) : [];
+  const bodyPartValues = overview ? Object.values(overview.bodyPartCounts) : [];
+
+  const bodyPartChartData = {
+    labels: bodyPartLabels,
+    datasets: [
+      {
+        label: '组数统计',
+        data: bodyPartValues,
+        backgroundColor: [
+          '#1890ff',
+          '#52c41a',
+          '#faad14',
+          '#722ed1',
+          '#13c2c2',
+          '#eb2f96',
+          '#2f54eb'
+        ]
+      }
+    ]
+  };
+
+  const intensityChartData = overview ? {
+    labels: ['低强度', '中强度', '高强度'],
+    datasets: [
+      {
+        label: '次数',
+        data: [
+          overview.intensityBuckets.low,
+          overview.intensityBuckets.medium,
+          overview.intensityBuckets.high
+        ],
+        backgroundColor: ['#52c41a', '#faad14', '#f5222d']
+      }
+    ]
+  } : { labels: [], datasets: [] };
+
+  return (
+    <div style={{
+      background: 'white',
+      borderRadius: '12px',
+      padding: '20px',
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+    }}>
+      <h2 style={{ marginBottom: '20px' }}>综合训练分析</h2>
+
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
+        {[7, 30, 90, 180].map(range => (
+          <button
+            key={range}
+            onClick={() => setDays(range)}
+            style={{
+              padding: '10px 16px',
+              borderRadius: '4px',
+              border: '1px solid #d9d9d9',
+              background: days === range ? '#1890ff' : '#fff',
+              color: days === range ? '#fff' : '#333',
+              cursor: 'pointer'
+            }}
+          >
+            最近{range}天
+          </button>
+        ))}
+      </div>
+
+      {loading && <p style={{ color: '#666' }}>加载中...</p>}
+      {error && <p style={{ color: '#ff4d4f' }}>{error}</p>}
+
+      {!loading && overview && (
+        <div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+            gap: '12px',
+            marginBottom: '20px'
+          }}>
+            {overviewCards.map((card, index) => (
+              <div
+                key={index}
+                style={{
+                  padding: '12px',
+                  border: '1px solid #f0f0f0',
+                  borderRadius: '8px',
+                  background: '#fff'
+                }}
+              >
+                <div style={{ fontSize: '12px', color: '#999', marginBottom: '6px' }}>{card.label}</div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{card.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '16px',
+            marginBottom: '20px'
+          }}>
+            <div style={{ padding: '12px', border: '1px solid #f0f0f0', borderRadius: '8px' }}>
+              <Line
+                data={dailyChartData}
+                options={{
+                  responsive: true,
+                  plugins: { legend: { position: 'top' } },
+                  scales: {
+                    y: { beginAtZero: true, position: 'left' },
+                    y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } }
+                  }
+                }}
+              />
+            </div>
+            <div style={{ padding: '12px', border: '1px solid #f0f0f0', borderRadius: '8px' }}>
+              <Bar data={bodyPartChartData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
+            </div>
+            <div style={{ padding: '12px', border: '1px solid #f0f0f0', borderRadius: '8px' }}>
+              <Bar data={intensityChartData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // 首页组件
 function Home({ username }) {
   const [workoutBriefs, setWorkoutBriefs] = useState([]);
@@ -1340,6 +1528,7 @@ function App() {
         <Nav>
           <NavLink to="/">首页</NavLink>
           <NavLink to="/calendar">训练日历</NavLink>
+          <NavLink to="/overview">综合分析</NavLink>
           <NavLink to="/exercise-history">动作分析</NavLink>
           <UserInfo>
             <span>👤 {username}</span>
@@ -1354,6 +1543,7 @@ function App() {
           <Route path="/workout/:id" element={<Workout username={username} />} />
           <Route path="/calendar" element={<Calendar username={username} />} />
           <Route path="/calendar/:date" element={<Calendar username={username} />} />
+          <Route path="/overview" element={<WorkoutOverview username={username} />} />
           <Route path="/exercise-history" element={<ExerciseHistory username={username} />} />
         </Routes>
       </Content>

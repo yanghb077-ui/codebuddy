@@ -49,6 +49,14 @@ router.get('/recent-7-days-brief', workoutController.getRecent7DaysBrief);
 router.get('/stats', workoutController.getWorkoutStats);
 
 /**
+ * @route   GET /api/workouts/overview
+ * @desc    获取综合训练分析数据
+ * @access  Public
+ * @query   {Number} days - 天数范围
+ */
+router.get('/overview', workoutController.getWorkoutOverview);
+
+/**
  * @route   GET /api/workouts/exercise-history/:exerciseId
  * @desc    获取动作历史详情与数据分析
  * @access  Public
